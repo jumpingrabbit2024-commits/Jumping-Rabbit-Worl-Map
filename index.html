@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jumping Rabbit — World Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --bg:#0a0b0e;
+    --panel-bg:rgba(10,11,15,0.96);
+    --accent:#ff6a3d;
+    --accent-dim:rgba(255,106,61,0.15);
+    --accent-glow:rgba(255,106,61,0.55);
+    --gold:#ffcf6b;
+    --ink:#e7e3da;
+    --muted:#8a8578;
+    --line:#242017;
+  }
+  body {
+    background:var(--bg); color:var(--ink);
+    font-family:'JetBrains Mono','Courier New',monospace; overflow:hidden;
+  }
+
+  /* INTRO SCREEN */
+  #intro {
+    position:fixed; inset:0; z-index:3000;
+    background:radial-gradient(circle at 50% 40%, #14110c 0%, #0a0b0e 70%);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    transition:opacity 1s ease;
+  }
+  #intro img {
+    width:110px; height:110px; border-radius:50%;
+    border:3px solid var(--accent);
+    box-shadow:0 0 25px var(--accent-glow), 0 0 55px rgba(255,106,61,0.3);
+    animation:introPulse 2.2s infinite; margin-bottom:24px;
+    object-fit:cover;
+  }
+  @keyframes introPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+  #intro h1 {
+    color:#fff; font-size:26px; letter-spacing:6px;
+    text-transform:uppercase; margin-bottom:16px;
+  }
+  #intro h1 span { color:var(--accent); text-shadow:0 0 14px var(--accent-glow); }
+  #intro .tagline {
+    max-width:520px; color:#b9b3a4; font-size:13px; line-height:1.9;
+    letter-spacing:0.4px; padding:0 24px; margin-bottom:18px;
+  }
+  #intro .stats {
+    color:var(--gold); font-size:14px; letter-spacing:3px;
+    margin-bottom:6px;
+  }
+  #intro .tag { color:#665f4f; font-size:11px; letter-spacing:3px; }
+  #intro.hide { opacity:0; pointer-events:none; }
+
+  #header {
+    position:fixed; top:0; left:0; width:100%; z-index:1000;
+    padding:10px 18px; background:rgba(10,11,15,0.88);
+    border-bottom:1px solid var(--line); backdrop-filter:blur(6px);
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  #logo {
+    height:50px; width:50px; border-radius:50%;
+    border:2px solid var(--accent);
+    box-shadow:0 0 14px var(--accent-glow);
+    object-fit:cover; cursor:pointer; transition:transform .2s; flex-shrink:0;
+  }
+  #logo:hover { transform:scale(1.08) rotate(-4deg); }
+  #brandText h1 {
+    font-size:17px; letter-spacing:3px; color:#fff;
+    text-transform:uppercase; white-space:nowrap;
+  }
+  #brandText h1 span { color:var(--accent); text-shadow:0 0 10px var(--accent-glow); }
+  #subtitle { font-size:10px; color:var(--muted); letter-spacing:2px; }
+
+  /* GENRE SELECTOR */
+  #genreWrap {
+    margin-left:auto; display:flex; align-items:center; gap:8px;
+  }
+  #genreLabel { font-size:10px; color:var(--muted); letter-spacing:2px; white-space:nowrap; }
+  #genreSelect {
+    background:#14120d; color:var(--ink); border:1px solid var(--accent);
+    padding:8px 10px; font-family:inherit; font-size:11px; letter-spacing:1px;
+    border-radius:4px; cursor:pointer; max-width:220px;
+    text-transform:uppercase;
+  }
+  #genreSelect:focus { outline:2px solid var(--gold); }
+
+  /* BANDCAMP LINK top-right */
+  #bcLink {
+    color:#c9c3b3; font-size:11px; letter-spacing:1px;
+    text-decoration:none; border:1px solid var(--accent);
+    padding:8px 12px; border-radius:4px;
+    background:rgba(20,18,13,0.7); transition:all .2s;
+    white-space:nowrap;
+  }
+  #bcLink:hover {
+    color:#fff; background:var(--accent-dim);
+    box-shadow:0 0 12px rgba(255,106,61,0.45);
+  }
+
+  #map { width:100vw; height:100vh; background:var(--bg); }
+
+  #panel {
+    position:fixed; top:0; right:-380px; width:360px; height:100%;
+    background:var(--panel-bg); border-left:2px solid var(--accent);
+    z-index:1001; transition:right .35s ease; padding:90px 20px 20px;
+    box-shadow:-5px 0 30px rgba(255,106,61,0.2); overflow-y:auto;
+  }
+  #panel.open { right:0; }
+  #panel h2 {
+    color:var(--accent); font-size:21px; letter-spacing:2px;
+    text-transform:uppercase; margin-bottom:4px;
+    text-shadow:0 0 12px var(--accent-glow);
+  }
+  #panel .count { font-size:11px; color:var(--muted); margin-bottom:6px; letter-spacing:1px; }
+  #panel .filterNote { font-size:10px; color:var(--gold); margin-bottom:18px; letter-spacing:1px; }
+  .band {
+    display:block; padding:12px 15px; margin-bottom:10px;
+    background:rgba(255,106,61,0.06); border:1px solid #221f18;
+    border-left:3px solid var(--accent); color:#ddd; text-decoration:none;
+    transition:all .2s; font-size:13px; letter-spacing:0.5px;
+  }
+  .band:hover {
+    background:var(--accent-dim); border-left-width:6px;
+    color:#fff; transform:translateX(-4px);
+    box-shadow:0 0 15px rgba(255,106,61,0.35);
+  }
+  .band .artistName { font-weight:bold; color:#fff; display:block; margin-bottom:3px; }
+  .band small { display:block; color:var(--muted); font-size:10px; margin-top:5px; letter-spacing:1px; }
+  .band .styleTag { color:var(--gold); }
+
+  #closeBtn {
+    position:absolute; top:85px; right:18px; cursor:pointer;
+    color:var(--accent); font-size:24px; background:none; border:none;
+  }
+
+  #hint {
+    position:fixed; bottom:15px; left:50%; transform:translateX(-50%);
+    z-index:1000; font-size:11px; color:#665f4f; letter-spacing:2px;
+    background:rgba(10,11,15,0.8); padding:8px 18px; border:1px solid var(--line);
+    text-align:center;
+  }
+  #infoBox {
+    position:fixed; bottom:20px; right:20px; z-index:1000;
+    width:300px; background:rgba(10,11,15,0.92);
+    border:1px solid var(--accent); border-left:4px solid var(--accent);
+    padding:18px 20px; border-radius:6px;
+    box-shadow:0 0 20px rgba(255,106,61,0.3);
+    backdrop-filter:blur(6px); transition:opacity .4s;
+  }
+  #infoBox h3 {
+    color:var(--accent); font-size:14px; letter-spacing:2px;
+    text-transform:uppercase; margin-bottom:10px;
+    text-shadow:0 0 8px rgba(255,106,61,0.4);
+  }
+  #infoBox p { color:#cfc9ba; font-size:12px; line-height:1.7; letter-spacing:0.5px; }
+  #infoBox .step { color:var(--accent); font-weight:bold; }
+  #infoClose {
+    position:absolute; top:10px; right:12px; cursor:pointer;
+    color:#776f5c; font-size:18px; background:none; border:none; transition:color .2s;
+  }
+  #infoClose:hover { color:var(--accent); }
+
+  #emptyNotice{
+    position:fixed; top:80px; left:50%; transform:translateX(-50%);
+    z-index:999; background:rgba(10,11,15,0.9); border:1px solid var(--accent);
+    padding:8px 18px; font-size:11px; letter-spacing:1px; color:var(--gold);
+    border-radius:4px; display:none;
+  }
+
+  .leaflet-top.leaflet-left { top:100px; }
+  .leaflet-container { background:var(--bg); }
+  .leaflet-control-attribution { background:rgba(10,11,15,0.7)!important; color:#4a463b!important; }
+  .leaflet-control-attribution a { color:#6b6656!important; }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    #header { padding:8px 10px; gap:8px; }
+    #brandText h1 { font-size:13px; letter-spacing:2px; }
+    #subtitle { font-size:8px; }
+    #logo { height:38px; width:38px; }
+    #genreWrap { width:100%; margin-left:0; order:3; }
+    #genreLabel{ display:none; }
+    #genreSelect { max-width:none; flex:1; }
+    #bcLink { font-size:9px; padding:6px 8px; }
+    #panel { width:88%; right:-100%; padding-top:78px; }
+    #closeBtn{ top:70px; }
+    #infoBox {
+      width:90%; left:50%; right:auto; transform:translateX(-50%);
+      bottom:10px; padding:14px 16px;
+    }
+    #infoBox p { font-size:11px; line-height:1.5; }
+    #hint { display:none; }
+    #intro h1 { font-size:19px; letter-spacing:3px; }
+    #intro img { width:85px; height:85px; }
+    #intro .tagline{ font-size:12px; }
+    .leaflet-top.leaflet-left { top:118px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- INTRO SCREEN -->
+<div id="intro">
+  <img src="https://f4.bcbits.com/img/0036682383_23.jpg" alt="Jumping Rabbit">
+  <h1>JUMPING <span>RABBIT</span></h1>
+  <p class="tagline">In Ontario, there's a restless rabbit jumping across scenes and styles. That's us: Jumping Rabbit, a label that distributes the best of the underground, no matter the tag. Here you'll find rock, pop, reggae, alternative, punk, kraut, noise, metal, experimental, etc. We love real music, the kind born in basements, garages, and small stages.</p>
+  <div class="stats" id="introStats"></div>
+  <div class="tag">// EXPLORE THE ROSTER</div>
+</div>
+
+<div id="header">
+  <img id="logo" src="https://f4.bcbits.com/img/0036682383_23.jpg" alt="Jumping Rabbit" title="Visit Jumping Rabbit on Bandcamp">
+  <div id="brandText">
+    <h1>JUMPING <span>RABBIT</span></h1>
+    <div id="subtitle">// WORLDWIDE UNDERGROUND ROSTER</div>
+  </div>
+  <div id="genreWrap">
+    <span id="genreLabel">GENRE:</span>
+    <select id="genreSelect"></select>
+  </div>
+  <a id="bcLink" href="https://jumpingrabbit.bandcamp.com/" target="_blank" rel="noopener">jumpingrabbit.bandcamp.com</a>
+</div>
+
+<div id="map"></div>
+<div id="emptyNotice">NO BANDS FOUND FOR THIS GENRE</div>
+
+<div id="panel">
+  <button id="closeBtn">&times;</button>
+  <h2 id="countryName"></h2>
+  <div class="count" id="bandCount"></div>
+  <div class="filterNote" id="filterNote"></div>
+  <div id="bandList"></div>
+</div>
+
+<div id="infoBox">
+  <button id="infoClose">&times;</button>
+  <h3>How to explore</h3>
+  <p>
+    <span class="step">1.</span> Pick a genre above, or leave it on "All Genres".<br><br>
+    <span class="step">2.</span> Click a glowing marker to see the bands from that country.<br><br>
+    <span class="step">3.</span> Click a band to open it on Bandcamp in a new tab.
+  </p>
+</div>
+
+<div id="hint">CLICK A GLOWING COUNTRY TO EXPLORE ITS BANDS</div>
+
+<script id="bandData" type="application/json">
+[{"artist": "Time Fields Industries", "country": "Canada", "album": "The Living Network", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-living-network", "spotify": "https://open.spotify.com/intl-es/artist/7wZ0k227cXxmcBUQnSgCJu?si=fb583725130649c8"}, {"artist": "Mädchenspiel", "country": "Germany", "album": "Papiermond", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/papiermond", "spotify": "https://open.spotify.com/intl-es/artist/73aLlRdqAvz52zakzUqhmx?si=7e37f4ed46d04a16"}, {"artist": "Mädchenspiel", "country": "Germany", "album": "Die Letzten Tage", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/die-letzten-tage", "spotify": "https://open.spotify.com/intl-es/artist/73aLlRdqAvz52zakzUqhmx?si=7e37f4ed46d04a16"}, {"artist": "Raiken Simonna", "country": "Croatia", "album": "Podzemni Karneval", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/podzemni-karneval", "spotify": ""}, {"artist": "Sorvaine", "country": "Canada", "album": "Falling Through", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/falling-through", "spotify": "https://open.spotify.com/intl-es/artist/1ATTEXizSCPIJ4SSUa6oNl?si=3802284d2afb4b14"}, {"artist": "Time Fields Industries", "country": "Canada", "album": "The Distinction", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-distinction", "spotify": "https://open.spotify.com/intl-es/artist/7wZ0k227cXxmcBUQnSgCJu?si=fb583725130649c8"}, {"artist": "Time Fields Industries", "country": "Canada", "album": "The Constructed Cycle", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-constructed-cycle", "spotify": "https://open.spotify.com/intl-es/artist/7wZ0k227cXxmcBUQnSgCJu?si=fb583725130649c8"}, {"artist": "小夢想機器 Little dream machines", "country": "China", "album": "影子的聲音 (Voices of Shadows)", "style": "Alternative Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/voices-of-shadows", "spotify": ""}, {"artist": "Dreck Ander", "country": "USA", "album": "Rooms", "style": "Ambient", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/rooms", "spotify": "https://open.spotify.com/intl-es/artist/1zUDdbJOuGIcVuHHcbGu5K?si=2c39790db43543b6"}, {"artist": "Mantis Polinox", "country": "Canada", "album": "Noiexperiment Tsunami", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/noiexperiment-tsunami", "spotify": "https://open.spotify.com/intl-es/artist/5kKEIqQXu8pqBJoQ6MBaBu?si=7d92416e683247a8"}, {"artist": "Ahamkara Ekdysis", "country": "USA", "album": "Aisling", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/aisling", "spotify": "https://open.spotify.com/intl-es/artist/4ugUy83axJWjY8at5zWtp3?si=840b80d6f0ce4d85"}, {"artist": "AISIRA", "country": "Canada", "album": "NE STO", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ne-sto", "spotify": "https://open.spotify.com/intl-es/artist/3td4rtZ3whgB869F6jJHOM?si=g57SZEWzTTOX_8ebpk9vkA"}, {"artist": "Alexander Zaid O.", "country": "Croatia", "album": "Nefertiti", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/nefertiti", "spotify": ""}, {"artist": "Bi Fuel", "country": "Italy", "album": "Shorts", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/shorts", "spotify": "https://open.spotify.com/intl-es/artist/5Y6dpJ1xNPdp9WaoZf5i6D?si=Y86AAWSWTMu5fLbSTptbqw"}, {"artist": "Black Saturn & Madsrecords", "country": "USA", "album": "Words of Vapor", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/words-of-vapor", "spotify": "https://open.spotify.com/intl-es/artist/2IN85MIUl7mjSIL6dZaxXy?si=57d48e5307834bd3"}, {"artist": "Den Swolav", "country": "Australia", "album": "Road to the sun", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/road-to-the-sun", "spotify": "https://open.spotify.com/intl-es/artist/7w5LCQSvWddda6bDw3OCjD?si=82578f07dc1f4ddd"}, {"artist": "Departure Street", "country": "France", "album": "All Becoming Shades", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/all-becoming-shades", "spotify": "https://open.spotify.com/intl-es/artist/6trcZX7yiAUmTx1SLPRYmd?si=WTT4jRG0TBmu52KIyzBJIA"}, {"artist": "eina", "country": "Canada", "album": "eina", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/eina", "spotify": ""}, {"artist": "Eintarka and Madsrecords", "country": "Poland", "album": "Sew", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sew", "spotify": "https://open.spotify.com/intl-es/artist/2IN85MIUl7mjSIL6dZaxXy?si=76d8669f9d6d4715"}, {"artist": "Eintarka and Madsrecords", "country": "Poland", "album": "Sew End", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sew-end", "spotify": "https://open.spotify.com/intl-es/artist/2IN85MIUl7mjSIL6dZaxXy?si=76d8669f9d6d4715"}, {"artist": "Enric deSombra", "country": "Spain", "album": "Desvíos", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/desv-os", "spotify": "https://open.spotify.com/intl-es/artist/3rAQzid68p2Yx6VzYrdOjM?si=oh_lV6g5RHy2pBCgsMpxmA"}, {"artist": "Etalon Production", "country": "United Kingdom", "album": "Luminous Static", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/luminous-static", "spotify": ""}, {"artist": "Forfedrenes", "country": "Norway", "album": "Stille alt blir uten form", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/stille-alt-blir-uten-form", "spotify": "https://open.spotify.com/intl-es/artist/3bdBa8ia3POkCBgtRZKQHQ?si=Mel-LMEfSymQi4_dhTqmCQ"}, {"artist": "GEX N TU", "country": "Canada", "album": "GEX N TU", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/gex-n-tu", "spotify": ""}, {"artist": "Laulava Sielu", "country": "Finland", "album": "lai", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/lai", "spotify": "https://open.spotify.com/intl-es/artist/1YhDULWqmeGZwCxhmSET1O?si=c968dd07ce5d4086"}, {"artist": "Laulava Sielu", "country": "Finland", "album": "Toinen maailma", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/toinen-maailma", "spotify": "https://open.spotify.com/intl-es/artist/1YhDULWqmeGZwCxhmSET1O?si=c968dd07ce5d4086"}, {"artist": "Laulava Sielu", "country": "Finland", "album": "Eksynyt Kosmonautti", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/eksynyt-kosmonautti", "spotify": "https://open.spotify.com/intl-es/artist/1YhDULWqmeGZwCxhmSET1O?si=c968dd07ce5d4086"}, {"artist": "Madsrecords", "country": "Chile", "album": "Sei", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sei", "spotify": "https://open.spotify.com/intl-es/artist/2IN85MIUl7mjSIL6dZaxXy?si=57d48e5307834bd3"}, {"artist": "Mantis Polinox", "country": "Canada", "album": "Deep City", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/deep-city", "spotify": "https://open.spotify.com/intl-es/artist/5kKEIqQXu8pqBJoQ6MBaBu?si=7d92416e683247a8"}, {"artist": "Marcelo A. Díaz Soto", "country": "Chile", "album": "SDHA", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sdha", "spotify": "https://open.spotify.com/intl-es/artist/5RnJZb4IF8oGt1x14WIXKP?si=c54ac310db574ddc"}, {"artist": "Maxi Guevara", "country": "Argentina", "album": "Luces en los sauces", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/luces-en-los-sauces", "spotify": "https://open.spotify.com/intl-es/artist/1mPTEer8bQYvma8HaADWY8?si=tv5LLfeMRkC2RwRYFpDqqQ"}, {"artist": "Tzurre", "country": "Slovakia", "album": "farby v tme", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/farby-v-tme", "spotify": ""}, {"artist": "Udunx", "country": "Norway", "album": "Ingen Kropp", "style": "Ambient / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ingen-kropp", "spotify": "https://open.spotify.com/intl-es/artist/6WK58xKQnmJ70z4sxr31ej?si=17fd866b3cac4f4b"}, {"artist": "Blackpool Connection", "country": "Canada", "album": "Rip it out", "style": "Breakcore", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/rip-it-out", "spotify": "https://open.spotify.com/intl-es/artist/4X8WxO2RwbNbKcRx2BP702?si=f556f71812c44dfe"}, {"artist": "Blackpool Connection", "country": "Canada", "album": "WOUND", "style": "Breakcore", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/wound", "spotify": "https://open.spotify.com/intl-es/artist/4X8WxO2RwbNbKcRx2BP702?si=f556f71812c44dfe"}, {"artist": "Blackpool Connection", "country": "Canada", "album": "ERROR KID", "style": "Breakcore", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/error-kid", "spotify": "https://open.spotify.com/intl-es/artist/4X8WxO2RwbNbKcRx2BP702?si=f556f71812c44dfe"}, {"artist": "wienneiw", "country": "New Zealand", "album": "dry", "style": "Breakcore", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/dry", "spotify": "https://open.spotify.com/intl-es/artist/7FMRyKZ8UKHZA93YjAIzko?si=188babf99d634cbb"}, {"artist": "wienneiw", "country": "New Zealand", "album": "Red Horizon", "style": "Breakcore", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/red-horizon", "spotify": "https://open.spotify.com/intl-es/artist/7FMRyKZ8UKHZA93YjAIzko?si=188babf99d634cbb"}, {"artist": "República Patinaranja", "country": "Colombia", "album": "La Ragua", "style": "Caribbean", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/la-ragua", "spotify": "https://open.spotify.com/intl-es/artist/4WWQAgWYsj3FvOSNH5da6c?si=996e06d86b6e4b03"}, {"artist": "PLAY PIXELNOISE", "country": "USA", "album": "Runner", "style": "Chiptune", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/runner", "spotify": "https://open.spotify.com/intl-es/artist/4IH0svNggdxdMM4X9Jx0HU?si=efe4cee784b54e37"}, {"artist": "Donna Strundkov", "country": "New Zealand", "album": "Bautaru", "style": "Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/bautaru", "spotify": "https://open.spotify.com/intl-es/artist/6MfI2k8KVOwFrvTjXNuHUa?si=33cc7c80313a4c93"}, {"artist": "After School Detention", "country": "Belgium", "album": "Plastic Mosquito", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/plastic-mosquito", "spotify": ""}, {"artist": "Ålesund Pole", "country": "Ireland", "album": "Nagara", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/nagara", "spotify": "https://open.spotify.com/intl-es/artist/6uPkgcJ7JBXPXNBD9lBU9j?si=180ec00223674869"}, {"artist": "Anashthalon", "country": "Canada", "album": "Drift Theory", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/drift-theory", "spotify": "https://open.spotify.com/intl-es/artist/3O6IBMrxlZiuzitovI17SU?si=c58c638dad0d436b"}, {"artist": "Kurzu Zero", "country": "Poland", "album": "Cisza Po Maszynach", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/cisza-po-maszynach", "spotify": ""}, {"artist": "Nicht Schuldig", "country": "Austria", "album": "Der Kopf wurde ein Raum", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/der-kopf-wurde-ein-raum", "spotify": "https://open.spotify.com/intl-es/artist/4fOlUmIHOPDWbU7eO7i1Ax?si=f312c8cfe13547a6"}, {"artist": "Nicht Schuldig", "country": "Austria", "album": "Instandhaltung", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/instandhaltung", "spotify": "https://open.spotify.com/intl-es/artist/4fOlUmIHOPDWbU7eO7i1Ax?si=f312c8cfe13547a6"}, {"artist": "Nicht Schuldig", "country": "Austria", "album": "Kein Anlass", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/kein-anlass", "spotify": "https://open.spotify.com/intl-es/artist/4fOlUmIHOPDWbU7eO7i1Ax?si=f312c8cfe13547a6"}, {"artist": "Pattern Archives", "country": "Canada", "album": "Synthetic Genesis", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/synthetic-genesis", "spotify": "https://open.spotify.com/intl-es/artist/0RLWmh5JrtPkNcpFoiw5ne?si=461a60591d0048a1"}, {"artist": "Rapskappa", "country": "Canada", "album": "Contours of Becoming", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/contours-of-becoming", "spotify": "https://open.spotify.com/intl-es/artist/3H2bzzMtWSTASLsqL2lrXX?si=77bb7102a782435d"}, {"artist": "Rapskappa", "country": "Canada", "album": "Beyond the Flesh", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/beyond-the-flesh", "spotify": "https://open.spotify.com/intl-es/artist/3H2bzzMtWSTASLsqL2lrXX?si=77bb7102a782435d"}, {"artist": "SOIWAN", "country": "Belgium", "album": "Corps en Cage", "style": "Experimental Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/corps-en-cage", "spotify": "https://open.spotify.com/intl-es/artist/06x9KC2SOjNXyjV09pfxTK?si=983d4175d2d24efe"}, {"artist": "BearBassBrew", "country": "Russia", "album": "An Eye on You", "style": "Hardbass", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/an-eye-on-you", "spotify": "https://open.spotify.com/intl-es/artist/0g5GqkWIhtVOyNYxp7qCFS?si=0eb761fad8f645dd"}, {"artist": "BearBassBrew", "country": "Russia", "album": "Time Traveler", "style": "Hardbass", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/time-traveler", "spotify": "https://open.spotify.com/intl-es/artist/0g5GqkWIhtVOyNYxp7qCFS?si=0eb761fad8f645dd"}, {"artist": "Candy sistema", "country": "Germany", "album": "Dienst", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/dienst", "spotify": "https://open.spotify.com/intl-es/artist/73MtAGayz3PL9AnYi5QG0H?si=9361ff5b2c7e46ba"}, {"artist": "Candy sistema", "country": "Germany", "album": "Entscheidung", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/entscheidung", "spotify": "https://open.spotify.com/intl-es/artist/73MtAGayz3PL9AnYi5QG0H?si=9361ff5b2c7e46ba"}, {"artist": "Candy sistema", "country": "Germany", "album": "Der Blick", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/der-blick", "spotify": "https://open.spotify.com/intl-es/artist/73MtAGayz3PL9AnYi5QG0H?si=9361ff5b2c7e46ba"}, {"artist": "Congo Body", "country": "Japan", "album": "Congo Body", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/congo-body", "spotify": "https://open.spotify.com/intl-es/album/3C9krWLan14CITuNhGTPR2?si=6f37d83d3a9d46c3"}, {"artist": "Gonen Street", "country": "Canada", "album": "Room 303", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/room-303", "spotify": "https://open.spotify.com/intl-es/artist/3n0BC5Ca9vIob30wnpiCin?si=rq6E1ctDRAiouDRi6X78LQ"}, {"artist": "Gonen Street", "country": "Canada", "album": "Free but not in my mind", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/free-but-not-in-my-mind", "spotify": "https://open.spotify.com/intl-es/artist/3n0BC5Ca9vIob30wnpiCin?si=rq6E1ctDRAiouDRi6X78LQ"}, {"artist": "Gonen Street", "country": "Canada", "album": "Seven", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/seven", "spotify": "https://open.spotify.com/intl-es/artist/3n0BC5Ca9vIob30wnpiCin?si=rq6E1ctDRAiouDRi6X78LQ"}, {"artist": "Gonen Street", "country": "Canada", "album": "Mitra", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/mitra", "spotify": "https://open.spotify.com/intl-es/artist/3n0BC5Ca9vIob30wnpiCin?si=rq6E1ctDRAiouDRi6X78LQ"}, {"artist": "Gonen Street", "country": "Canada", "album": "mY mind talks", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/my-mind-talks", "spotify": "https://open.spotify.com/intl-es/artist/3n0BC5Ca9vIob30wnpiCin?si=rq6E1ctDRAiouDRi6X78LQ"}, {"artist": "Hodie", "country": "Canada", "album": "Inner Ascent", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/inner-ascent", "spotify": "https://open.spotify.com/intl-es/artist/4VBIGJxDQPGt0yofmXWPaY?si=4c8e0af3140c45e7"}, {"artist": "Kapitän Kakumba", "country": "Namibia", "album": "Kalter Drang", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/kalter-drang", "spotify": "https://open.spotify.com/intl-es/artist/1nHPcamzPGSHfl7za9233o?si=UY0IlWBkThuvBn0mFSxtGw"}, {"artist": "Ligne Infinite", "country": "France", "album": "Mouvement secret", "style": "Indie / Experimental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/mouvement-secret", "spotify": "https://open.spotify.com/intl-es/artist/3UtUmRNcxPHQdD0pASyLxn?si=0a9bd9f8d0334205"}, {"artist": "Kalicayta", "country": "Canada", "album": "Alive", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/alive", "spotify": "https://open.spotify.com/intl-es/artist/5BV9HXOHajb6rPmPhN2lMP?si=0dc1e58e518b4e3d"}, {"artist": "Laneank Anne", "country": "Ukraine", "album": "Після тиші After Silence", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/after-silence", "spotify": "https://open.spotify.com/intl-es/artist/75SW4WnstEczjXESKdOkrF?si=d28af325a3ce4950"}, {"artist": "Obeymind", "country": "Canada", "album": "Purging", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/purging", "spotify": "https://open.spotify.com/intl-es/artist/0KQnIP2lAQm8j9QqvknVKB?si=7c8a93ec55ec4d55"}, {"artist": "Serinna", "country": "New Zealand", "album": "A thousand voices calling me", "style": "Indie / Pop", "bandcamp": "https://serinna.bandcamp.com/album/a-thousand-voices-calling-me", "spotify": "https://open.spotify.com/intl-es/artist/0cnq2W611WD0eUhy3UVO8H?si=12599a987ac44798"}, {"artist": "Serinna", "country": "New Zealand", "album": "Just leaving joy outside the door", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/just-leaving-joy-outside-the-door", "spotify": "https://open.spotify.com/intl-es/artist/0cnq2W611WD0eUhy3UVO8H?si=12599a987ac44798"}, {"artist": "Terror Plastic Citizen", "country": "Canada", "album": "The Parallel Garden", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-parallel-garden", "spotify": "https://open.spotify.com/intl-es/artist/0MypWNKbxtf7G84T7PGJfc?si=JD96E4AdSW6tAAl0VqncAg"}, {"artist": "דג כחול", "country": "Israel", "album": "גן עדן בדרום העיר (Eden in South City)", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/eden-in-south-city", "spotify": ""}, {"artist": "דג כחול", "country": "Israel", "album": "כאילו רגש (As if feeling)", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/as-if-feeling", "spotify": ""}, {"artist": "عائشة القمر", "country": "Egypt", "album": "أنا البداية", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/--3", "spotify": "https://open.spotify.com/intl-es/artist/0cej7w2ZAloeyjKHvAUGKs?si=5b151565227a4dec"}, {"artist": "عائشة القمر", "country": "Egypt", "album": "نورك فيا", "style": "Indie / Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/--2", "spotify": "https://open.spotify.com/intl-es/artist/0cej7w2ZAloeyjKHvAUGKs?si=5b151565227a4dec"}, {"artist": "AHHO", "country": "Canada", "album": "The New Dawn", "style": "Industrial Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-new-dawn", "spotify": "https://open.spotify.com/intl-es/artist/0fHA4u9k4h3UHSTlzqvcuk?si=72c9e2a85b844ce4"}, {"artist": "CREATION OF COLLAPSE", "country": "Croatia", "album": "The Prophecy Unfolds", "style": "Industrial Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-prophecy-unfolds", "spotify": "https://open.spotify.com/intl-es/artist/2yTufPM9XeG76gvJLDmrG2?si=a2ed082855724c42"}, {"artist": "Dankents", "country": "Germany", "album": "Das Letzte Gespräch", "style": "Industrial Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/das-letzte-gespr-ch", "spotify": "https://open.spotify.com/intl-es/artist/12LWu2nFDOu6GRI1w4mFq2?si=cfe49a5b74774ea8"}, {"artist": "Nuka Volga", "country": "Russia", "album": "A Bullet in Your Head", "style": "Industrial Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/a-bullet-in-your-head", "spotify": "https://open.spotify.com/intl-es/artist/0zGmUjFku89eh7BnxnMNcL?si=77e3808802554b10"}, {"artist": "Runaway", "country": "Canada", "album": "WHITE NIGHTS", "style": "Jazz", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/white-nights", "spotify": "https://open.spotify.com/intl-es/artist/2xZhEqjYhjKLaaFDzAB2Nn?si=183d9ce41a3841be"}, {"artist": "心の彼方 Kokoro no Kanata", "country": "Japan", "album": "魔法の力 Magical Power", "style": "J-Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/magical-power", "spotify": "https://open.spotify.com/intl-es/artist/7oQa3urBJG0t3dds4Zx0BT?si=14f4f5ba69a94353"}, {"artist": "Lee Jun the martian 이준 더 마션", "country": "South Korea", "album": "The Border of Our Hearts 우리의 마음의 경계", "style": "K-Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-border-of-our-hearts", "spotify": "https://open.spotify.com/intl-es/artist/4crify2ws21Leuc6R7L7XS?si=021f1dd9bc7f4ea1"}, {"artist": "Velvet Dream 벨벳 드림", "country": "South Korea", "album": "Magical world", "style": "K-Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/magical-world", "spotify": "https://open.spotify.com/intl-es/artist/0l7Z927SJvhJdSzujBA7r0?si=lXaW8w0UTs25fjM_3DE7ug"}, {"artist": "Aynan", "country": "Greece", "album": "Script of Control", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/script-of-control", "spotify": "https://open.spotify.com/intl-es/artist/4lwPYrpI86MdybRx8A6ynS?si=630813932f30494c"}, {"artist": "Birdhells", "country": "Australia", "album": "Just understood", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/just-understood", "spotify": "https://open.spotify.com/intl-es/artist/0cHJcT5QfXPYfRLKrNsVw9?si=ml936kH4Rl-BuSAljvzoFw"}, {"artist": "Dreiden", "country": "Germany", "album": "Sigillen im Körper", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sigillen-im-k-rper", "spotify": "https://open.spotify.com/intl-es/artist/2txGYf0P5DuLtzrca1tjiL?si=9af7460a94514060"}, {"artist": "Feindlicher Schädel", "country": "Germany", "album": "König aus Staub", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/k-nig-aus-staub", "spotify": "https://open.spotify.com/intl-es/artist/3UUrFUrGVWTbrjIOpSaXAP?si=29eb81e744ae4706"}, {"artist": "In Sally’s Head", "country": "Japan", "album": "Arukontesu", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/arukontesu", "spotify": "https://open.spotify.com/intl-es/artist/3TcQgdoB6IktOyuigPfOd7?si=6409e77495e84d0e"}, {"artist": "Naim Gehena", "country": "Australia", "album": "The Silent Feast", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-silent-feast", "spotify": "https://open.spotify.com/intl-es/artist/2M1e2sUkCrh0el8goQh0Os?si=51aee3be20b24fa4"}, {"artist": "Naim Gehena", "country": "Australia", "album": "The Death House Landlady", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-death-house-landlady", "spotify": "https://open.spotify.com/intl-es/artist/2M1e2sUkCrh0el8goQh0Os?si=51aee3be20b24fa4"}, {"artist": "Naim Gehena", "country": "Australia", "album": "C Denied", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/c-denied", "spotify": "https://open.spotify.com/intl-es/artist/2M1e2sUkCrh0el8goQh0Os?si=51aee3be20b24fa4"}, {"artist": "Naim Gehena", "country": "Australia", "album": "The Death House Landlady", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-death-house-landlady", "spotify": "https://open.spotify.com/intl-es/artist/2M1e2sUkCrh0el8goQh0Os?si=51aee3be20b24fa4"}, {"artist": "Rainha Negra", "country": "Portugal", "album": "Arquitetura do Silêncio", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/arquitetura-do-sil-ncio", "spotify": "https://open.spotify.com/intl-es/artist/2NUzwytoRnUjnDgOh870WW?si=47d09f7ec9284570"}, {"artist": "Rainha Negra", "country": "Portugal", "album": "Terra Rasgada", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/terra-rasgada", "spotify": "https://open.spotify.com/intl-es/artist/2NUzwytoRnUjnDgOh870WW?si=47d09f7ec9284570"}, {"artist": "SELEIDA", "country": "Czech Republic", "album": "Zmrzlá noc", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/zmrzl-noc", "spotify": "https://open.spotify.com/intl-es/artist/7edgWzCUneXyXB1OMN4S03?si=0c9d80c36e79426f"}, {"artist": "There is a younger brother 有弟", "country": "Japan", "album": "Untamed Cities", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/untamed-cities", "spotify": "https://open.spotify.com/intl-es/artist/6uaTUlHhWTKlyMFKMHLxUD?si=bHTplSQFQkqtj0UfpbRhZg"}, {"artist": "Veil of Ascension", "country": "Canada", "album": "Chains of Wrath", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/chains-of-wrath", "spotify": "https://open.spotify.com/intl-es/artist/4W0tk9oFADvyk2w3FrQLNZ?si=5200a96805fc40b8"}, {"artist": "有弟 There is a younger brother", "country": "Japan", "album": "无形之眼 The Invisible Eye", "style": "Metal", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-invisible-eye", "spotify": "https://open.spotify.com/intl-es/artist/6uaTUlHhWTKlyMFKMHLxUD?si=bHTplSQFQkqtj0UfpbRhZg"}, {"artist": "SONNENSAND", "country": "Germany", "album": "Schlaf Aus Eisen", "style": "New Age", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/schlaf-aus-eisen", "spotify": ""}, {"artist": "SEYNEE", "country": "Austria", "album": "NOISE", "style": "Noise", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/noise", "spotify": "https://open.spotify.com/intl-es/artist/7wUWbswvMGZyqUs8yBRCyP?si=1d45a2b009f145d3"}, {"artist": "Aisha Dana", "country": "Saudi Arabia", "album": "Time for a while", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/time-for-a-while", "spotify": "https://open.spotify.com/intl-es/artist/33LoGUnG4zW6rZt9hHX9OS?si=18ce9cd7d5604b62"}, {"artist": "Alice and the No Wonderland", "country": "USA", "album": "Oh my!", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/oh-my", "spotify": "https://open.spotify.com/intl-es/artist/1JO4xHKSSsb5JrBDxrhK0G?si=2a4db114947e4bcf"}, {"artist": "Anna Herkilova", "country": "Russia", "album": "Магазин в полночь The Midnight Shop", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-midnight-shop", "spotify": "https://open.spotify.com/intl-es/artist/5pqAQx4GxvDTXY8hbXeOHw?si=3d91a7d22d9746af"}, {"artist": "Del Carmen Kohnenkanpf", "country": "England", "album": "Chains", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/chains", "spotify": "https://open.spotify.com/intl-es/artist/6rNTNhEo2CA39q2zIf9yhU?si=f86b8bc3f5c649bb"}, {"artist": "Heiðarnar-robotter", "country": "Denmark", "album": "Børn Af Stilhed", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/b-rn-af-stilhed", "spotify": "https://open.spotify.com/intl-es/artist/4rwAHsBmS5AoWSjV8MX60N?si=j89m-xm7R06GEG5qcbXjrA"}, {"artist": "Kairobot Noir", "country": "Canada", "album": "Le cœur vivant", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/le-c-ur-vivant", "spotify": "https://open.spotify.com/intl-es/artist/2KxUeri9Wy0Wv00qfUKi64?si=1fcc1f8a90be4f20"}, {"artist": "Naianna Signaals", "country": "Netherlands", "album": "Laatste Signaal", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/laatste-signaal", "spotify": "https://open.spotify.com/intl-es/artist/23mp4JQr1PToiJ4MfN4HGo?si=4732eb45b501421d"}, {"artist": "Red Kitsune 赤い狐", "country": "Japan", "album": "SEVEN YEARS OLD 七歳", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/seven-years-old", "spotify": "https://open.spotify.com/intl-es/artist/0qpbb4vune2gfkvU3ve8at?si=yb_NXOkDQjyygU8h5uvQzw"}, {"artist": "Red Kitsune 赤い狐", "country": "Japan", "album": "Sugar Walls 砂糖の壁", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sugar-walls", "spotify": "https://open.spotify.com/intl-es/artist/0qpbb4vune2gfkvU3ve8at?si=yb_NXOkDQjyygU8h5uvQzw"}, {"artist": "Red Kitsune 赤い狐", "country": "Japan", "album": "Flowers Off the Path道を外れた花", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/flowers-off-the-path", "spotify": "https://open.spotify.com/intl-es/artist/0qpbb4vune2gfkvU3ve8at?si=yb_NXOkDQjyygU8h5uvQzw"}, {"artist": "Red Kitsune 赤い狐", "country": "Japan", "album": "BLOOD IN THE SHOE 靴の中の血", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/blood-in-the-shoe", "spotify": "https://open.spotify.com/intl-es/artist/0qpbb4vune2gfkvU3ve8at?si=yb_NXOkDQjyygU8h5uvQzw"}, {"artist": "This is Necessary", "country": "Canada", "album": "The countdown is not quiet", "style": "Pop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-countdown-is-not-quiet", "spotify": "https://open.spotify.com/intl-es/album/7l1Z2EZ4e9A69DrqNI3vnA?si=b010ebd9e5fd4462"}, {"artist": "Aus Schatten", "country": "Germany", "album": "Ketten aus Licht", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ketten-aus-licht", "spotify": "https://open.spotify.com/intl-es/artist/3PnMddLV56HmpNBTCWSA3D?si=9783da9c3ce64f31"}, {"artist": "Book of Selina", "country": "Canada", "album": "in the blue night", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/in-the-blue-night", "spotify": "https://open.spotify.com/intl-es/artist/3YHR2qAjo0qVuLAKZwTT0s?si=46f284f78b504c11"}, {"artist": "Book of Selina", "country": "Canada", "album": "In justice, in mercy", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/in-justice-in-mercy", "spotify": "https://open.spotify.com/intl-es/artist/3YHR2qAjo0qVuLAKZwTT0s?si=46f284f78b504c11"}, {"artist": "Headends", "country": "Ireland", "album": "A twisted love", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/a-twisted-love", "spotify": "https://open.spotify.com/intl-es/artist/6LpXs0ZZI7Msol14zjWHKY?si=a48195e38d3f415b"}, {"artist": "Kairobot Noir", "country": "France", "album": "Le Dernier", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/le-dernier", "spotify": "https://open.spotify.com/intl-es/artist/2KxUeri9Wy0Wv00qfUKi64?si=cda99f7d873145f4"}, {"artist": "Kairobot Noir", "country": "France", "album": "L’Homme de la Terre", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/l-homme-de-la-terre", "spotify": "https://open.spotify.com/intl-es/artist/2KxUeri9Wy0Wv00qfUKi64?si=cda99f7d873145f4"}, {"artist": "Kairobot Noir", "country": "France", "album": "Les Rues", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/les-rues", "spotify": "https://open.spotify.com/intl-es/artist/2KxUeri9Wy0Wv00qfUKi64?si=cda99f7d873145f4"}, {"artist": "Knelt in silence", "country": "Canada", "album": "Edge of Silence", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/edge-of-silence", "spotify": "https://open.spotify.com/intl-es/artist/6k19bnN03YYclCsCtH7V9n?si=5a0c6b7bd3354e69"}, {"artist": "Talking to the Black Mirror", "country": "Canada", "album": "Between the flashes", "style": "Pop / New Wave", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/between-the-flashes", "spotify": "https://open.spotify.com/intl-es/artist/2a3fpIZBNzX60VACkHDEx9?si=d64dca7f86ee45f2"}, {"artist": "Cien duszy", "country": "Poland", "album": "OBIAD GOTOWY", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/obiad-gotowy", "spotify": "https://open.spotify.com/intl-es/artist/1eeaCDVRzNw2dDEYKsJw3j?si=6b95d0a779e7408b"}, {"artist": "Cien duszy", "country": "Poland", "album": "WZOROWY", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/wzorowy", "spotify": "https://open.spotify.com/intl-es/artist/1eeaCDVRzNw2dDEYKsJw3j?si=6b95d0a779e7408b"}, {"artist": "Cien duszy", "country": "Poland", "album": "MIASTO UDAJE", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/miasto-udaje", "spotify": "https://open.spotify.com/intl-es/artist/1eeaCDVRzNw2dDEYKsJw3j?si=6b95d0a779e7408b"}, {"artist": "Cien duszy", "country": "Poland", "album": "EMILCIN 1978", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/emilcin-1978", "spotify": "https://open.spotify.com/intl-es/artist/1eeaCDVRzNw2dDEYKsJw3j?si=6b95d0a779e7408b"}, {"artist": "Fiar to Liar", "country": "Canada", "album": "Echoes in the room", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/echoes-in-the-room", "spotify": "https://open.spotify.com/intl-es/artist/2oL0EpQDjHWIXJBNbg5XBw?si=ee724bbbb2014721"}, {"artist": "MOMGARAGE", "country": "USA", "album": "Born to Live Loud", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/born-to-live-loud", "spotify": "https://open.spotify.com/intl-es/artist/2y1FKkeXmU5N7RXQ8LhGn9?si=ca0294ade75a48a4"}, {"artist": "MOMGARAGE", "country": "USA", "album": "Boardwalk days", "style": "Punk Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/boardwalk-days", "spotify": "https://open.spotify.com/intl-es/artist/2y1FKkeXmU5N7RXQ8LhGn9?si=ca0294ade75a48a4"}, {"artist": "Black Lourdes", "country": "Canada", "album": "THE SCREEN IS ON", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-screen-is-on", "spotify": "https://open.spotify.com/intl-es/artist/2M5n6LoLKIpRVDL5isA6KN?si=bdc778de5d6d4cd2"}, {"artist": "BLACK WETMORE", "country": "USA", "album": "City of Sleepwalkers", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/city-of-sleepwalkers", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "Black Wetmore", "country": "USA", "album": "Live Tyler Texas", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/live-tyler-texas", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "BLACK WETMORE", "country": "USA", "album": "Open your eyes", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/open-your-eyes", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "Black Wetmore", "country": "USA", "album": "Kivu Dust", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/kivu-dust", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "BLACK WETMORE", "country": "USA", "album": "We won’t stop, no we won’t stop", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/we-won-t-stop-no-we-won-t-stop", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "Black Wetmore", "country": "USA", "album": "FANEM", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/fanem", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "BLACK WETMORE", "country": "USA", "album": "Hit the floor", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/hit-the-floor", "spotify": "https://open.spotify.com/intl-es/artist/5OUyBIWpM1u738tHWzeO9D?si=f7fa7f73c9d44303"}, {"artist": "Candonga ilegal", "country": "Mozambique", "album": "Cidade Ferida", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/cidade-ferida", "spotify": ""}, {"artist": "Candonga ilegal", "country": "Mozambique", "album": "Mercado de Fantasma", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/mercado-de-fantasma", "spotify": ""}, {"artist": "Celebrante", "country": "USA", "album": "La Raíz", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/la-ra-z", "spotify": "https://open.spotify.com/intl-es/artist/6LxKOcklwvUCiqILzxvPcD?si=8bc1fe88320b4845"}, {"artist": "Celebrante", "country": "USA", "album": "Niño metralleta", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ni-o-metralleta", "spotify": "https://open.spotify.com/intl-es/artist/6LxKOcklwvUCiqILzxvPcD?si=8bc1fe88320b4845"}, {"artist": "Celebrante", "country": "USA", "album": "¿Quién escribió el guion global?", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/qui-n-escribi-el-guion-global", "spotify": "https://open.spotify.com/intl-es/artist/6LxKOcklwvUCiqILzxvPcD?si=8bc1fe88320b4845"}, {"artist": "Datawickendead", "country": "Portugal", "album": "Plastic Liberty", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/plastic-liberty", "spotify": ""}, {"artist": "Drystara", "country": "USA", "album": "The stage is his battlefield", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-stage-is-his-battlefield", "spotify": "https://open.spotify.com/intl-es/artist/0fKoqrx6uKKH5fNu1seA6q?si=24e610f47df64391"}, {"artist": "Heidelberger Lager", "country": "Germany", "album": "Papiergesichter", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/papiergesichter", "spotify": ""}, {"artist": "Mazelo", "country": "Canada", "album": "Sunday Medicine", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/sunday-medicine", "spotify": "https://open.spotify.com/intl-es/artist/41EYuqQFomzFttaSX3Nc8S?si=8af406e024424786"}, {"artist": "MAZELO", "country": "Canada", "album": "Even in darkness", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/even-in-darkness", "spotify": "https://open.spotify.com/intl-es/artist/41EYuqQFomzFttaSX3Nc8S?si=8af406e024424786"}, {"artist": "Mwenyewe", "country": "Congo", "album": "Mwanaume Mgeni", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/mwanaume-mgeni", "spotify": "https://open.spotify.com/intl-es/artist/4zlnpkxgxbXm96rLHW1GLA?si=miYy1ogiROWtblJJlKIMPw"}, {"artist": "No Way Back", "country": "China", "album": "Irreversible Act", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/irreversible-act", "spotify": "https://open.spotify.com/intl-es/artist/55sIBD7PKQNsAwupGmVtQD?si=hbb1KEXJTFOOACQueblDjA"}, {"artist": "No Way Back 无路可退", "country": "China", "album": "Calculated Presence 计算中的存在", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/calculated-presence", "spotify": "https://open.spotify.com/intl-es/artist/55sIBD7PKQNsAwupGmVtQD?si=hbb1KEXJTFOOACQueblDjA"}, {"artist": "Non Torneremo Indietro", "country": "Italy", "album": "Non Torneremo Indietro", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/non-torneremo-indietro", "spotify": ""}, {"artist": "Street cards", "country": "Canada", "album": "Parallel Climb", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/parallel-climb", "spotify": "https://open.spotify.com/intl-es/artist/0Jc2cbuuB3Hp1FhPR9IPzv?si=68f067abb20e45c5"}, {"artist": "Street Cards", "country": "Canada", "album": "Crossline Method", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/crossline-method", "spotify": "https://open.spotify.com/intl-es/artist/0Jc2cbuuB3Hp1FhPR9IPzv?si=68f067abb20e45c5"}, {"artist": "THE LOST SEEDS", "country": "Canada", "album": "Young boy", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/young-boy", "spotify": "https://open.spotify.com/intl-es/artist/3sd0zuF9EknllnRaj3LINJ?si=8f2abd2311334c3b"}, {"artist": "THE LOST SEEDS", "country": "Canada", "album": "It is not found in answers", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/it-is-not-found-in-answers", "spotify": "https://open.spotify.com/intl-es/artist/3sd0zuF9EknllnRaj3LINJ?si=8f2abd2311334c3b"}, {"artist": "VI ER ÉN", "country": "Norway", "album": "Ingen stemme kaller", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ingen-stemme-kaller", "spotify": "https://open.spotify.com/intl-es/artist/73gxdR25Q6msA8Xch9B9q6?si=1e4dd486a8174f77"}, {"artist": "Yeux Bandés", "country": "France", "album": "s'enfuir", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/senfuir", "spotify": "https://open.spotify.com/intl-es/artist/5D3vukNRCbwkKdnyERzgQI?si=acbbe27e8d6f4316"}, {"artist": "دكتور الزمن", "country": "Saudi Arabia", "album": "في الظلام الذي يحيط In the darkness that surrounds", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/in-the-darkness-that-surrounds", "spotify": "https://open.spotify.com/intl-es/artist/0k8gD9rP5DrX06PZVP3sll?si=1Q7E4xw-S9S-KYRpUW0G0A"}, {"artist": "अप्सराओं के बीच Between the Apsaras", "country": "India", "album": "मैंने साल गिने I Counted the Years", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/i-counted-the-years", "spotify": "https://open.spotify.com/intl-es/artist/4nE4DmxAbs13pX0gy66W8E?si=822db5c7d54645f3"}, {"artist": "武蔵", "country": "Japan", "album": "恐怖の浸食 Invasion of Fear", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/invasion-of-fear", "spotify": "https://open.spotify.com/intl-es/artist/0L91c2oHjl4vaH1yBgfpYh?si=b8bb1ada699945ca"}, {"artist": "黒回廊 Black Corridor", "country": "Japan", "album": "ガラスの向こう側 (Beyond the Glass)", "style": "Rap / Hip Hop", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/beyond-the-glass", "spotify": ""}, {"artist": "Dread Gwaan", "country": "USA", "album": "Love those who bring you pain", "style": "Reggae", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/love-those-who-bring-you-pain", "spotify": "https://open.spotify.com/intl-es/artist/4xBChrF7Oq4ijif0908PYq?si=0XkRuJhrT8SbO2IQ0VXlVA"}, {"artist": "The Skifters", "country": "Jamaica", "album": "Observing Mind", "style": "Reggae", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/observing-mind", "spotify": "https://open.spotify.com/intl-es/artist/5bvxn3CD2WehQl4JqW1QGY?si=36655289fbef421c"}, {"artist": "The Skifters", "country": "Jamaica", "album": "Stay", "style": "Reggae", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/stay", "spotify": "https://open.spotify.com/intl-es/artist/5bvxn3CD2WehQl4JqW1QGY?si=36655289fbef421c"}, {"artist": "The Skifters", "country": "Jamaica", "album": "The Child of True Humanity", "style": "Reggae", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-child-of-true-humanity", "spotify": "https://open.spotify.com/intl-es/artist/5bvxn3CD2WehQl4JqW1QGY?si=36655289fbef421c"}, {"artist": "Anyway Wherever", "country": "Canada", "album": "The Other Way", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-other-way", "spotify": "https://open.spotify.com/intl-es/artist/5zZzeP87Na5yil4sL2Qs7Q?si=e575f5737bc14912"}, {"artist": "Destiny Corps", "country": "Australia", "album": "Run and Return", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/run-and-return", "spotify": "https://open.spotify.com/intl-es/artist/4QLnqrMXSY6NLac2KzUUh6?si=350318e2b5774262"}, {"artist": "Destiny Corps", "country": "Australia", "album": "YOU KNOW MY NAME", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/you-know-my-name", "spotify": "https://open.spotify.com/intl-es/artist/4QLnqrMXSY6NLac2KzUUh6?si=350318e2b5774262"}, {"artist": "Khamsamani", "country": "England", "album": "Come to Me", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/come-to-me", "spotify": "https://open.spotify.com/intl-es/artist/1xCS5aH2zpGYgzoGUZ3qCZ?si=b3141e85bd3a413f"}, {"artist": "Seltsame Kinder aus Monschau", "country": "Germany", "album": "Nach Mitternacht", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/nach-mitternacht", "spotify": "https://open.spotify.com/intl-es/artist/4YRz2YQoKlH5hM2AvZU13f?si=CUCy84ywRgCaeevhCYBD1g"}, {"artist": "Seltsame Kinder aus Monschau", "country": "Germany", "album": "Lauter als die Angst", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/lauter-als-die-angst", "spotify": "https://open.spotify.com/intl-es/artist/4YRz2YQoKlH5hM2AvZU13f?si=CUCy84ywRgCaeevhCYBD1g"}, {"artist": "Sophylle Hedwig", "country": "Germany", "album": "Straßenkinder", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/stra-enkinder", "spotify": ""}, {"artist": "Spicy Popcorn スパイシーポップコーン", "country": "Japan", "album": "土を知れ Know the Field", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/know-the-field", "spotify": "https://open.spotify.com/intl-es/artist/2DpNxoL5R6BccrEPHMzQAa?si=be0962f133e74466"}, {"artist": "The Dragon Monkeys", "country": "USA", "album": "Perfect System", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/perfect-system", "spotify": "https://open.spotify.com/intl-es/artist/0oZW9tlqd3iBiGkD7nOorE?si=923b89ed05204e80"}, {"artist": "スパイシーポップコーン Spicy Popcorn", "country": "Japan", "album": "動かぬ意志 Unwavering Will", "style": "Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/unwavering-will", "spotify": "https://open.spotify.com/intl-es/artist/2DpNxoL5R6BccrEPHMzQAa?si=be0962f133e74466"}, {"artist": "Anya Yehoshua", "country": "USA", "album": "Reality now", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/reality-now", "spotify": "https://open.spotify.com/intl-es/artist/4NMXL4qOmseo1ly99FuI6S?si=ebba674403c3497d"}, {"artist": "Anya Yehoshua", "country": "USA", "album": "Antera", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/antera", "spotify": "https://open.spotify.com/intl-es/artist/4NMXL4qOmseo1ly99FuI6S?si=ebba674403c3497d"}, {"artist": "CEUX DE L'AUTRE CÔTÉ", "country": "France", "album": "Toujours En Chemin", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/toujours-en-chemin", "spotify": "https://open.spotify.com/intl-es/artist/1zc8l2U3fYAxyOT4OALK0S?si=5ada471684ea4fcd"}, {"artist": "Geist der Venus", "country": "Germany", "album": "Weg zur Venus", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/weg-zur-venus", "spotify": "https://open.spotify.com/intl-es/artist/6xQrbhi6XhIdJhcgyHmEDr?si=1Io2TgBoT6CAHv0dzLr4bA"}, {"artist": "Geist der Venus", "country": "Germany", "album": "Galaktische Horizonte", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/galaktische-horizonte", "spotify": "https://open.spotify.com/intl-es/artist/6xQrbhi6XhIdJhcgyHmEDr?si=1Io2TgBoT6CAHv0dzLr4bA"}, {"artist": "Kranna", "country": "England", "album": "THE LAST 24 HOURS", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-last-24-hours", "spotify": "https://open.spotify.com/intl-es/artist/3lpJKVrHu7b1sdNsPZqdxh?si=50148d88df5e4ba5"}, {"artist": "Kranna", "country": "England", "album": "The Permanence", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-permanence", "spotify": "https://open.spotify.com/intl-es/artist/3lpJKVrHu7b1sdNsPZqdxh?si=50148d88df5e4ba5"}, {"artist": "Kranna", "country": "England", "album": "Silence defended me", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/silence-defended-me", "spotify": "https://open.spotify.com/intl-es/artist/3lpJKVrHu7b1sdNsPZqdxh?si=50148d88df5e4ba5"}, {"artist": "Kranna", "country": "England", "album": "The Dismantling", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-dismantling", "spotify": "https://open.spotify.com/intl-es/artist/3lpJKVrHu7b1sdNsPZqdxh?si=50148d88df5e4ba5"}, {"artist": "Kranna", "country": "England", "album": "The Human Reboot", "style": "Progressive Rock", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/the-human-reboot", "spotify": "https://open.spotify.com/intl-es/artist/3lpJKVrHu7b1sdNsPZqdxh?si=50148d88df5e4ba5"}, {"artist": "Calanga Balou", "country": "Haiti", "album": "Ti Men Nan Mache", "style": "Ska", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/ti-men-nan-mache", "spotify": ""}, {"artist": "Skanaband", "country": "Canada", "album": "Trace Errante", "style": "Ska", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/trace-errante", "spotify": "https://open.spotify.com/intl-es/artist/2zn04UE8mXtsqfhO0Yi2zv?si=m98Kww0JQHGJPpgC_W-TNA"}, {"artist": "Ensamble BluePink", "country": "England", "album": "Adventure Troy", "style": "Soundtrack / Instrumental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/adventure-troy", "spotify": "https://open.spotify.com/intl-es/artist/5Kf640gJ2IiIXnQBpqvFGV?si=4932c1e433e84b44"}, {"artist": "Ensamble BluePink", "country": "England", "album": "STELLAR ROOTBOT", "style": "Soundtrack / Instrumental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/stellar-rootbot", "spotify": "https://open.spotify.com/intl-es/artist/5Kf640gJ2IiIXnQBpqvFGV?si=4932c1e433e84b44"}, {"artist": "Ensamble BluePink", "country": "England", "album": "They were always from here", "style": "Soundtrack / Instrumental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/they-were-always-from-here", "spotify": "https://open.spotify.com/intl-es/artist/5Kf640gJ2IiIXnQBpqvFGV?si=4932c1e433e84b44"}, {"artist": "Ensamble BluePink", "country": "England", "album": "NEVA a New Life", "style": "Soundtrack / Instrumental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/neva-a-new-life", "spotify": "https://open.spotify.com/intl-es/artist/5Kf640gJ2IiIXnQBpqvFGV?si=4932c1e433e84b44"}, {"artist": "Leirabird Machine", "country": "United Kingdom", "album": "Rost", "style": "Techno", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/rost", "spotify": "https://open.spotify.com/intl-es/artist/6rBaRS5BrV7gYN4agfkS5v?si=7d3e88da18d44817"}, {"artist": "Ron Scatty", "country": "Canada", "album": "White earth", "style": "World Music / Instrumental", "bandcamp": "https://jumpingrabbit.bandcamp.com/album/white-earth", "spotify": "https://open.spotify.com/intl-es/artist/0WHRc2faUx9oOO6UhOUP7n?si=24f93e34036e44ab"}]
+</script>
+<script id="countryCoords" type="application/json">
+{"Argentina": [-38.4, -63.6], "Australia": [-25.3, 133.8], "Austria": [47.5, 14.5], "Belgium": [50.6, 4.5], "Canada": [56.1, -106.3], "Chile": [-35.7, -71.5], "China": [35.9, 104.2], "Colombia": [4.6, -74.3], "Congo": [-4.0, 21.8], "Croatia": [45.1, 15.2], "Czech Republic": [49.8, 15.5], "Denmark": [56.3, 9.5], "Egypt": [26.8, 30.8], "England": [52.35, -1.17], "Finland": [61.92, 25.74], "France": [46.6, 2.2], "Germany": [51.16, 10.45], "Greece": [39.07, 21.82], "Haiti": [18.97, -72.29], "India": [22.35, 78.66], "Ireland": [53.4, -8.2], "Israel": [31.05, 34.85], "Italy": [42.5, 12.5], "Jamaica": [18.11, -77.3], "Japan": [36.2, 138.25], "Mozambique": [-18.67, 35.53], "Namibia": [-22.96, 18.49], "Netherlands": [52.13, 5.29], "New Zealand": [-41.3, 174.8], "Norway": [60.47, 8.46], "Poland": [51.92, 19.15], "Portugal": [39.4, -8.2], "Russia": [61.5, 90.0], "South Korea": [36.5, 127.9], "Spain": [40.0, -3.7], "Saudi Arabia": [23.9, 45.1], "Slovakia": [48.67, 19.7], "USA": [39.8, -98.6], "Ukraine": [48.38, 31.16], "United Kingdom": [54.5, -3.0]}
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const allRecords = JSON.parse(document.getElementById('bandData').textContent);
+const countryCoords = JSON.parse(document.getElementById('countryCoords').textContent);
+
+// ---- Intro stats ----
+const totalBands = allRecords.length;
+const totalCountries = new Set(allRecords.map(r=>r.country)).size;
+document.getElementById('introStats').textContent = totalBands+" RELEASES  /  "+totalCountries+" COUNTRIES";
+setTimeout(()=>{ document.getElementById('intro').classList.add('hide'); }, 4200);
+
+// ---- Genre select ----
+const genres = [...new Set(allRecords.map(r=>r.style))].sort((a,b)=>a.localeCompare(b));
+const genreSelect = document.getElementById('genreSelect');
+const optAll = document.createElement('option');
+optAll.value = 'ALL'; optAll.textContent = 'All Genres';
+genreSelect.appendChild(optAll);
+genres.forEach(g=>{
+  const o = document.createElement('option');
+  o.value = g; o.textContent = g;
+  genreSelect.appendChild(o);
+});
+
+// ---- Map setup ----
+const map = L.map('map', {
+  center:[25,10], zoom:3, minZoom:2, maxZoom:6,
+  worldCopyJump:true, zoomControl:true
+});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'Jumping Rabbit | &copy; OpenStreetMap &copy; CARTO',
+  subdomains:'abcd', maxZoom:19
+}).addTo(map);
+
+const glowIcon = L.divIcon({
+  className:'',
+  html:'<div style="width:16px;height:16px;border-radius:50%;background:#ff6a3d;box-shadow:0 0 12px #ff6a3d,0 0 24px #ff6a3d;animation:pulse 1.6s infinite;border:2px solid #fff;"></div><style>@keyframes pulse{0%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.6}100%{transform:scale(1);opacity:1}}</style>',
+  iconSize:[16,16], iconAnchor:[8,8]
+});
+
+const panel=document.getElementById('panel');
+const countryNameEl=document.getElementById('countryName');
+const bandCountEl=document.getElementById('bandCount');
+const filterNoteEl=document.getElementById('filterNote');
+const bandListEl=document.getElementById('bandList');
+const emptyNotice=document.getElementById('emptyNotice');
+
+let markers = [];
+let currentGenre = 'ALL';
+let activeCountry = null;
+
+function recordsForGenre(genre){
+  return genre === 'ALL' ? allRecords : allRecords.filter(r=>r.style === genre);
+}
+
+function groupByCountry(records){
+  const map = {};
+  records.forEach(r=>{
+    if(!map[r.country]) map[r.country] = [];
+    map[r.country].push(r);
+  });
+  return map;
+}
+
+function openPanel(country){
+  activeCountry = country;
+  const records = recordsForGenre(currentGenre).filter(r=>r.country===country);
+  countryNameEl.textContent = country;
+  bandCountEl.textContent = records.length+" RELEASE"+(records.length>1?"S":"")+" // SIGNED";
+  filterNoteEl.textContent = currentGenre==='ALL' ? '' : ('FILTERED BY '+currentGenre.toUpperCase());
+  bandListEl.innerHTML='';
+  records
+    .sort((a,b)=> a.artist.localeCompare(b.artist))
+    .forEach(r=>{
+      const a=document.createElement('a');
+      a.className='band'; a.href=r.bandcamp; a.target='_blank'; a.rel='noopener';
+      a.innerHTML = '<span class="artistName">'+r.artist+'</span>'
+                  + r.album
+                  + '<small class="styleTag">'+r.style+'</small>'
+                  + '<small>OPEN ON BANDCAMP</small>';
+      bandListEl.appendChild(a);
+    });
+  panel.classList.add('open');
+}
+
+function renderMarkers(){
+  markers.forEach(m=>map.removeLayer(m));
+  markers = [];
+  const grouped = groupByCountry(recordsForGenre(currentGenre));
+  const countries = Object.keys(grouped);
+  emptyNotice.style.display = countries.length === 0 ? 'block' : 'none';
+
+  countries.forEach(country=>{
+    const coord = countryCoords[country];
+    if(!coord) return;
+    const list = grouped[country];
+    const m = L.marker(coord, {icon:glowIcon}).addTo(map);
+    m.bindTooltip(country.toUpperCase()+" - "+list.length+(list.length>1?" releases":" release"),{
+      direction:'top', offset:[0,-10]
+    });
+    m.on('click', ()=>{ openPanel(country); map.flyTo(coord, 4, {duration:1}); });
+    markers.push(m);
+  });
+
+  // if a country panel is open but no longer has matches for this genre, close it
+  if(activeCountry && !grouped[activeCountry]){
+    panel.classList.remove('open');
+    activeCountry = null;
+  } else if(activeCountry){
+    openPanel(activeCountry);
+  }
+}
+
+genreSelect.addEventListener('change', (e)=>{
+  currentGenre = e.target.value;
+  renderMarkers();
+});
+
+document.getElementById('closeBtn').onclick=()=>panel.classList.remove('open');
+document.getElementById('infoClose').onclick=()=>document.getElementById('infoBox').style.display='none';
+document.getElementById('logo').onclick=()=>window.open('https://jumpingrabbit.bandcamp.com/','_blank');
+
+renderMarkers();
+</script>
+</body>
+</html>
